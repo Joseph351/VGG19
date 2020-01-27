@@ -166,22 +166,52 @@ class VGG19:
             for i in range(epochs):
                 total_loss = 0
                 total_acc = 0
-                train_iter = pipeline.data_input_pipeline(train_paths[i], apply_batch = True, perform_shuffle=True, batch_size=batch_size)
+                train_iter = pipeline.data_input_pipeline(train_paths[i],apply_batch = True,perform_shuffle=True,batch_size=batch_size)
                 batch_features, batch_labels = train_iter.get_next()
                 try:
-                    x, y = sess.run([batch_features["vgg19_input"], batch_labels])
-                    y = keras.utils.to_categorical(y, 1001)
-                except tf.errors.OutOfRangeError:
+                    try:
+                        x, y = sess.run([batch_features["vgg19_input"], batch_labels])
+                        y = keras.utils.to_categorical(y, 1001)
+                    except tf.errors.OutOfRangeError:
+                        pass
+                except tf.errors.DataLossError:
                     pass
-                for batch in range(1251//sub_batch_size):
-                    batch_x = x[batch*sub_batch_size:min((batch+1)*sub_batch_size,len(x))]
-                    batch_y = y[batch*sub_batch_size:min((batch+1)*sub_batch_size,len(y))]
+                num = batch_size//sub_batch_size
+                for batch in range(num):
+                    rand_idx = np.random.choice(len(x), sub_batch_size)
+                    batch_x = x[rand_idx]
+                    batch_y = y[rand_idx]
                     _, loss, acc = sess.run([grad_step, cost, accuracy], feed_dict={X: batch_x, Y: batch_y, flag_val: True})
                     total_loss += loss
                     total_acc += acc
-                print("Iter " + str(i) + ", Loss= " + \
-                        "{:.6f}".format(total_loss/(1251//sub_batch_size)) + ", Training Accuracy= " + \
-                        "{:.5f}".format(total_acc/(1251//sub_batch_size)))
+                print("Epoch " + str(i) + ", Loss= " + \
+                        "{:.6f}".format(total_loss/num) + ", Training Accuracy= " + \
+                        "{:.5f}".format(total_acc/num))
+                
+                #run optimization on validation set after every 8 training set
+                if (i+1)%8 == 0:
+                    val_loss = 0
+                    val_acc = 0
+                    idx = (i+1)//8 - 1
+                    val_iter = pipeline.data_input_pipeline(val_paths[idx], apply_batch = True, perform_shuffle=True, batch_size=390)
+                    val_features, vals_labels = val_iter.get_next()
+                    try:
+                        try:
+                            x_val, y_val = sess.run([batch_features["vgg19_input"], batch_labels])
+                            y_val = keras.utils.to_categorical(y_val, 1001)
+                        except tf.errors.OutOfRangeError:
+                            pass
+                    except tf.errors.DataLossError:
+                        pass
+                    num = 390//sub_batch_size
+                    for batch in range(num):
+                        rand_idx = np.random.choice(len(x_val), sub_batch_size)
+                        batch_x_val = x[rand_idx]
+                        batch_y_val = y[rand_idx]
+                        v_acc, v_loss = sess.run([accuracy,cost], feed_dict={X: batch_x_val,Y : batch_y_val, flag_val: False})
+                        val_loss += v_loss
+                        val_acc += v_acc
+                    print("Testing Loss: {:.5f}".format(val_loss/num) + ", Testing Accuracy: {:.5f}".format(val_acc/num))
                 
                 
                 
